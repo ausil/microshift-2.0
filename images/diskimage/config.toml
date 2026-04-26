@@ -1,0 +1,36 @@
+# bootc-image-builder blueprint for MicroShift disk images
+#
+# Usage:
+#   sudo podman run --rm -it --privileged \
+#     --security-opt label=type:unconfined_t \
+#     -v /var/lib/containers/storage:/var/lib/containers/storage \
+#     -v ./images/diskimage/config.toml:/config.toml:ro \
+#     -v ./_output/images:/output \
+#     quay.io/centos-bootc/bootc-image-builder:latest \
+#     --type qcow2 --local --rootfs xfs \
+#     localhost/microshift-bootc:latest
+
+[customizations]
+hostname = "microshift"
+
+[[customizations.user]]
+name = "microshift"
+groups = ["wheel"]
+# To set a password, add:
+#   password = "$6$rounds=4096$..."   # mkpasswd --method=sha-512
+# To set an SSH key, add:
+#   key = "ssh-ed25519 AAAA..."
+
+[customizations.services]
+enabled = ["sshd", "crio", "microshift"]
+
+[customizations.firewall]
+ports = ["6443:tcp", "22:tcp", "10250:tcp", "2379:tcp"]
+
+[[customizations.filesystem]]
+mountpoint = "/"
+minsize = "10 GiB"
+
+[[customizations.filesystem]]
+mountpoint = "/var/lib/microshift"
+minsize = "5 GiB"

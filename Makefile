@@ -9,7 +9,8 @@ LDFLAGS := -X $(MODULE)/pkg/version.Version=$(VERSION) \
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
-.PHONY: all build test lint clean install uninstall fmt vet srpm rpm bootc
+.PHONY: all build test lint clean install uninstall fmt vet srpm rpm bootc \
+       disk-image disk-image-qcow2 disk-image-raw disk-image-iso disk-image-all
 
 all: build
 
@@ -61,6 +62,23 @@ rpm: srpm
 
 bootc: build
 	podman build -t microshift-bootc:$(VERSION) -f images/bootc/Containerfile .
+
+DISK_IMAGE_FORMATS ?= qcow2
+
+disk-image: bootc
+	bash scripts/build-disk-images.sh --format $(DISK_IMAGE_FORMATS)
+
+disk-image-qcow2: bootc
+	bash scripts/build-disk-images.sh --format qcow2
+
+disk-image-raw: bootc
+	bash scripts/build-disk-images.sh --format raw
+
+disk-image-iso: bootc
+	bash scripts/build-disk-images.sh --format iso
+
+disk-image-all: bootc
+	bash scripts/build-disk-images.sh --format all
 
 e2e:
 	bash test/e2e/smoke_test.sh
