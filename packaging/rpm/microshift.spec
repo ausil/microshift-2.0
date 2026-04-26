@@ -28,7 +28,7 @@ components as separate systemd services.
 %setup -q
 
 %build
-make build VERSION=%{version}
+make build VERSION=%{version} GOFLAGS=-mod=vendor
 
 %install
 make install DESTDIR=%{buildroot}

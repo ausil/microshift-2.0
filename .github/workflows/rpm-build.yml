@@ -24,6 +24,11 @@ jobs:
       - name: Set up rpmbuild tree
         run: rpmdev-setuptree
 
+      - name: Vendor Go dependencies
+        run: |
+          export GOFLAGS=-mod=vendor
+          go mod vendor
+
       - name: Create source tarball
         run: |
           version=$(grep '^Version:' packaging/rpm/microshift.spec | awk '{print $2}')
