@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build binary
+        run: make build VERSION=${{ steps.version.outputs.version }}
+
+      - name: Run tests
+        run: make test
+
+      - name: Create source tarball
+        run: |
+          git archive --prefix=microshift-${{ steps.version.outputs.version }}/ \
+            HEAD -o microshift-${{ steps.version.outputs.version }}.tar.gz
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get commits since last tag
+          prev_tag=$(git tag --sort=-version:refname | head -2 | tail -1)
+          if [ -z "$prev_tag" ] || [ "$prev_tag" = "v${{ steps.version.outputs.version }}" ]; then
+            echo "body=Initial release" >> "$GITHUB_OUTPUT"
+          else
+            log=$(git log --oneline "$prev_tag"..HEAD --no-merges)
+            {
+              echo "body<<CHANGELOG_EOF"
+              echo "$log"
+              echo "CHANGELOG_EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ steps.changelog.outputs.body }}
+          files: |
+            bin/microshift
+            microshift-${{ steps.version.outputs.version }}.tar.gz

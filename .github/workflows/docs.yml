@@ -1,0 +1,39 @@
+name: Documentation
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'README.md'
+      - 'CONTRIBUTING.md'
+
+permissions:
+  contents: read
+
+jobs:
+  links:
+    name: Check internal links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for broken internal links
+        run: |
+          exit_code=0
+          for md in README.md CONTRIBUTING.md docs/*.md; do
+            [ -f "$md" ] || continue
+            # Extract relative markdown links (not URLs)
+            links=$(grep -oP '\]\((?!https?://|#)([^)]+)\)' "$md" | sed 's/\](\(.*\))/\1/' || true)
+            dir=$(dirname "$md")
+            for link in $links; do
+              # Resolve relative to the file's directory
+              target="$dir/$link"
+              # Normalize path
+              target=$(realpath --relative-to=. "$target" 2>/dev/null || echo "$target")
+              if [ ! -f "$target" ]; then
+                echo "BROKEN LINK: $md -> $link (resolved: $target)"
+                exit_code=1
+              fi
+            done
+          done
+          exit $exit_code
