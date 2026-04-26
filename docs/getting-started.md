@@ -4,15 +4,15 @@
 
 MicroShift 2.0 requires a Fedora system (Fedora IoT recommended) with the following packages available from the Fedora repositories:
 
-- `kubernetes1.32` -- provides kube-apiserver, kube-controller-manager, kube-scheduler, and kubelet
+- `kubernetes1.35` -- provides kube-apiserver, kube-controller-manager, kube-scheduler, and kubelet
 - `etcd` -- cluster state store
-- `cri-o` -- container runtime
+- `cri-o1.35` -- container runtime
 - `containernetworking-plugins` -- CNI plugins (bridge, host-local)
 
 Install the dependencies:
 
 ```bash
-sudo dnf install kubernetes1.32 etcd cri-o containernetworking-plugins
+sudo dnf install kubernetes1.35 etcd cri-o1.35 containernetworking-plugins
 ```
 
 ## Installation

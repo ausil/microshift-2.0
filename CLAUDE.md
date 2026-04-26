@@ -4,7 +4,7 @@ Lightweight single-node Kubernetes for edge, built on Fedora-packaged components
 
 ## What is this?
 
-A from-scratch reimplementation of MicroShift. Instead of embedding K8s components as Go libraries in a monolithic binary, this project is a thin Go daemon that orchestrates separate systemd services using binaries from Fedora's `kubernetes1.32` packages.
+A from-scratch reimplementation of MicroShift. Instead of embedding K8s components as Go libraries in a monolithic binary, this project is a thin Go daemon that orchestrates separate systemd services using binaries from Fedora's `kubernetes1.35` packages.
 
 ## Architecture
 
@@ -52,16 +52,16 @@ make install  # installs binary, systemd units, assets
 - Go module: `github.com/ausil/microshift-2.0`
 - Config file: `/etc/microshift/config.yaml`
 - Data directory: `/var/lib/microshift/` (certs, kubeconfigs, component configs, etcd data)
-- Targets Fedora IoT with kubernetes1.32, etcd, cri-o, containernetworking-plugins
+- Targets Fedora IoT with kubernetes1.35, etcd, cri-o1.35, containernetworking-plugins
 - Kindnet and CoreDNS run as pods (not host packages)
 - Apache-2.0 license
 
 ## Dependencies
 
 Host packages (from Fedora repos):
-- `kubernetes1.32` — kube-apiserver, kube-controller-manager, kube-scheduler, kubelet
+- `kubernetes1.35` — kube-apiserver, kube-controller-manager, kube-scheduler, kubelet
 - `etcd` — cluster state store
-- `cri-o` — container runtime
+- `cri-o1.35` — container runtime
 - `containernetworking-plugins` — CNI plugins (bridge, host-local)
 
 Go dependencies:

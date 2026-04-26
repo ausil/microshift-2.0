@@ -7,7 +7,7 @@ Lightweight single-node Kubernetes for edge computing, built on Fedora-packaged 
 
 ## What is MicroShift 2.0?
 
-MicroShift 2.0 is a from-scratch reimplementation of MicroShift that takes a fundamentally different approach to running Kubernetes on edge devices. Instead of embedding Kubernetes components as Go libraries in a monolithic binary, MicroShift 2.0 is a thin orchestration daemon that manages separate systemd services using binaries from Fedora's `kubernetes1.32` packages.
+MicroShift 2.0 is a from-scratch reimplementation of MicroShift that takes a fundamentally different approach to running Kubernetes on edge devices. Instead of embedding Kubernetes components as Go libraries in a monolithic binary, MicroShift 2.0 is a thin orchestration daemon that manages separate systemd services using binaries from Fedora's `kubernetes1.35` packages.
 
 The `microshift` daemon handles certificate generation, kubeconfig creation, and component configuration, then delegates actual Kubernetes workloads to standard Fedora-packaged binaries (`kube-apiserver`, `etcd`, `kubelet`, etc.) running as independent systemd services. This means components can be updated independently through the system package manager, failures are isolated per-service, and the entire stack integrates naturally with systemd tooling.
 
@@ -17,7 +17,7 @@ MicroShift 2.0 targets Fedora IoT and CentOS Stream 10, with delivery via both b
 
 - **Single-node Kubernetes** -- Full K8s control plane and worker on one machine, optimized for edge
 - **Systemd-native** -- Each component runs as its own systemd service with proper dependency ordering
-- **Fedora-packaged dependencies** -- Uses `kubernetes1.32`, `etcd`, `cri-o` directly from Fedora repos
+- **Fedora-packaged dependencies** -- Uses `kubernetes1.35`, `etcd`, `cri-o1.35` directly from Fedora repos
 - **Automatic TLS** -- Generates all certificates and kubeconfig files on first start
 - **Configurable storage** -- Local-path (default), TopoLVM/LVMS, or NFS provisioners
 - **CNI options** -- Kindnet (default, zero-config) or OVN-Kubernetes
@@ -51,7 +51,7 @@ All component services have `PartOf=microshift.service` -- stopping MicroShift c
 ### Install dependencies
 
 ```bash
-sudo dnf install kubernetes1.32 etcd cri-o containernetworking-plugins
+sudo dnf install kubernetes1.35 etcd cri-o1.35 containernetworking-plugins
 ```
 
 ### Install MicroShift
@@ -74,7 +74,7 @@ sudo make install
 ### Start the cluster
 
 ```bash
-sudo systemctl enable --now cri-o
+sudo systemctl enable --now crio
 sudo systemctl enable --now microshift
 ```
 

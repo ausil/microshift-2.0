@@ -12,9 +12,9 @@ Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  golang >= 1.21
 BuildRequires:  systemd-rpm-macros
 
-Requires:       kubernetes1.32
+Requires:       kubernetes1.35
 Requires:       etcd
-Requires:       cri-o
+Requires:       cri-o1.35
 Requires:       containernetworking-plugins
 Recommends:     lvm2
 Suggests:       nfs-utils

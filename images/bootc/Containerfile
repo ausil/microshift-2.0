@@ -2,9 +2,9 @@ FROM quay.io/fedora/fedora-bootc:44
 
 # Install MicroShift dependencies from Fedora repos
 RUN dnf install -y \
-        kubernetes1.32 \
+        kubernetes1.35 \
         etcd \
-        cri-o \
+        cri-o1.35 \
         containernetworking-plugins \
         lvm2 \
         nfs-utils \

@@ -51,20 +51,20 @@ sudo journalctl -u 'microshift*' --no-pager
 **Check dependencies:**
 
 ```bash
-rpm -q kubernetes1.32 etcd cri-o containernetworking-plugins
+rpm -q kubernetes1.35 etcd cri-o1.35 containernetworking-plugins
 ```
 
 If any are missing, install them:
 
 ```bash
-sudo dnf install kubernetes1.32 etcd cri-o containernetworking-plugins
+sudo dnf install kubernetes1.35 etcd cri-o1.35 containernetworking-plugins
 ```
 
 **Check that CRI-O is running:**
 
 ```bash
-sudo systemctl status cri-o
-sudo systemctl enable --now cri-o
+sudo systemctl status crio
+sudo systemctl enable --now crio
 ```
 
 **Check for port conflicts:**
@@ -248,8 +248,8 @@ sudo mount -t nfs <server>:<path> /mnt
 **Check CRI-O status:**
 
 ```bash
-sudo systemctl status cri-o
-sudo journalctl -u cri-o --no-pager -n 50
+sudo systemctl status crio
+sudo journalctl -u crio --no-pager -n 50
 ```
 
 **List containers:**
