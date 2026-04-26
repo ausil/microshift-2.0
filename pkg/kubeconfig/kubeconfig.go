@@ -13,12 +13,12 @@ import (
 
 // KubeconfigData represents the standard kubeconfig YAML structure.
 type KubeconfigData struct {
-	APIVersion     string           `yaml:"apiVersion"`
-	Kind           string           `yaml:"kind"`
-	Clusters       []ClusterEntry   `yaml:"clusters"`
-	Users          []UserEntry      `yaml:"users"`
-	Contexts       []ContextEntry   `yaml:"contexts"`
-	CurrentContext string           `yaml:"current-context"`
+	APIVersion     string         `yaml:"apiVersion"`
+	Kind           string         `yaml:"kind"`
+	Clusters       []ClusterEntry `yaml:"clusters"`
+	Users          []UserEntry    `yaml:"users"`
+	Contexts       []ContextEntry `yaml:"contexts"`
+	CurrentContext string         `yaml:"current-context"`
 }
 
 // ClusterEntry is one entry in the clusters list.
@@ -112,8 +112,8 @@ func GenerateAllKubeconfigs(cfg *config.Config, clusterCerts *certs.ClusterCerts
 	caCertPEM := clusterCerts.RootCA.CertPEM
 
 	configs := []struct {
-		name    string
-		cert    *certs.Certificate
+		name string
+		cert *certs.Certificate
 	}{
 		{"admin", clusterCerts.AdminCert},
 		{"controller-manager", clusterCerts.ControllerManagerCert},

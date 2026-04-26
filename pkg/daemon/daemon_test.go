@@ -123,13 +123,13 @@ func TestGenerateComponentConfigsCreatesAllFiles(t *testing.T) {
 
 	// Verify file contents are non-empty.
 	files := map[string]string{
-		"etcd.yaml":             "name:",
-		"etcd.env":              "ETCD_",
-		"apiserver.env":         "KUBE_APISERVER_ARGS",
+		"etcd.yaml":              "name:",
+		"etcd.env":               "ETCD_",
+		"apiserver.env":          "KUBE_APISERVER_ARGS",
 		"controller-manager.env": "KUBE_CONTROLLER_MANAGER_ARGS",
-		"scheduler.env":         "KUBE_SCHEDULER_ARGS",
-		"kubelet-config.yaml":   "KubeletConfiguration",
-		"kubelet.env":           "KUBELET_ARGS",
+		"scheduler.env":          "KUBE_SCHEDULER_ARGS",
+		"kubelet-config.yaml":    "KubeletConfiguration",
+		"kubelet.env":            "KUBELET_ARGS",
 	}
 
 	for f, expected := range files {

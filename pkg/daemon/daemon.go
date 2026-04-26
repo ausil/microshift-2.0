@@ -18,10 +18,10 @@ import (
 )
 
 type Daemon struct {
-	cfg     *config.Config
-	svcMgr  *services.ServiceManager
-	health  *healthcheck.HealthChecker
-	stopCh  chan struct{}
+	cfg    *config.Config
+	svcMgr *services.ServiceManager
+	health *healthcheck.HealthChecker
+	stopCh chan struct{}
 }
 
 var componentServices = []string{
