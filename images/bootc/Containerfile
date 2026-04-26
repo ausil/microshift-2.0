@@ -28,5 +28,5 @@ COPY assets/ /usr/share/microshift/assets/
 RUN mkdir -p /var/lib/microshift
 
 # Enable services so they start on boot
-RUN systemctl enable cri-o.service && \
+RUN systemctl enable crio.service && \
     systemctl enable microshift.service

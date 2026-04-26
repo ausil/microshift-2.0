@@ -59,7 +59,7 @@ The daemon follows a strict ordering when starting:
 ## Systemd Dependency Chain
 
 ```
-cri-o.service
+crio.service
       |
       v
 microshift.service  (Type=notify, WatchdogSec=300)
@@ -74,7 +74,7 @@ microshift-apiserver.service  (After=microshift-etcd.service)
       |
       +---> microshift-scheduler.service
       |
-      +---> microshift-kubelet.service  (After=cri-o.service)
+      +---> microshift-kubelet.service  (After=crio.service)
 ```
 
 All component services have `PartOf=microshift.service`. Stopping or restarting `microshift.service` automatically stops all components. The daemon stops components in reverse order (kubelet, scheduler, controller-manager, API server, etcd).

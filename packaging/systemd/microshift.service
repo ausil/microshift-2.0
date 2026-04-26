@@ -1,9 +1,9 @@
 [Unit]
 Description=MicroShift - Lightweight Kubernetes for Edge
 Documentation=https://github.com/ausil/microshift-2.0
-After=network-online.target cri-o.service
+After=network-online.target crio.service
 Wants=network-online.target
-Requires=cri-o.service
+Requires=crio.service
 
 [Service]
 Type=notify
