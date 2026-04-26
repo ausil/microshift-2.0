@@ -1,0 +1,105 @@
+name: RPM Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  srpm:
+    name: Build SRPM
+    runs-on: ubuntu-latest
+    container:
+      image: registry.fedoraproject.org/fedora:latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install build tools
+        run: dnf install -y rpm-build rpmdevtools golang make git-core
+
+      - name: Set up rpmbuild tree
+        run: rpmdev-setuptree
+
+      - name: Create source tarball
+        run: |
+          version=$(grep '^Version:' packaging/rpm/microshift.spec | awk '{print $2}')
+          git archive --prefix=microshift-${version}/ HEAD \
+            -o ~/rpmbuild/SOURCES/microshift-${version}.tar.gz
+
+      - name: Build SRPM
+        run: |
+          rpmbuild -bs packaging/rpm/microshift.spec
+
+      - name: Upload SRPM
+        uses: actions/upload-artifact@v4
+        with:
+          name: srpm
+          path: ~/rpmbuild/SRPMS/*.src.rpm
+
+  mock:
+    name: Mock build (${{ matrix.target }})
+    needs: srpm
+    runs-on: ubuntu-latest
+    container:
+      image: registry.fedoraproject.org/fedora:latest
+      options: --privileged
+    strategy:
+      matrix:
+        target:
+          - fedora-rawhide-x86_64
+    steps:
+      - name: Install mock
+        run: |
+          dnf install -y mock
+          useradd -m mockbuild || true
+          usermod -a -G mock mockbuild
+
+      - name: Download SRPM
+        uses: actions/download-artifact@v4
+        with:
+          name: srpm
+          path: /tmp/srpms
+
+      - name: Build RPM with mock
+        run: |
+          srpm=$(ls /tmp/srpms/*.src.rpm | head -1)
+          mock -r ${{ matrix.target }} --rebuild "$srpm" --resultdir=/tmp/mock-results
+
+      - name: List built packages
+        run: ls -la /tmp/mock-results/*.rpm 2>/dev/null || echo "No RPMs found"
+
+      - name: Upload RPMs
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpms-${{ matrix.target }}
+          path: /tmp/mock-results/*.rpm
+
+  systemd-check:
+    name: Validate systemd units
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check all component services have PartOf
+        run: |
+          for unit in packaging/systemd/microshift-*.service; do
+            if ! grep -q 'PartOf=microshift.service' "$unit"; then
+              echo "ERROR: $unit is missing PartOf=microshift.service"
+              exit 1
+            fi
+          done
+          echo "All component services have PartOf=microshift.service"
+
+      - name: Check service dependency ordering
+        run: |
+          # etcd must come after microshift
+          grep -q 'After=microshift.service' packaging/systemd/microshift-etcd.service
+          # apiserver must come after etcd
+          grep -q 'After=microshift-etcd.service' packaging/systemd/microshift-apiserver.service
+          echo "Service dependency ordering is correct"

@@ -1,0 +1,32 @@
+FROM registry.fedoraproject.org/fedora-iot-bootc:latest
+
+# Install MicroShift dependencies from Fedora repos
+RUN dnf install -y \
+        kubernetes1.32 \
+        etcd \
+        cri-o \
+        containernetworking-plugins \
+        lvm2 \
+        nfs-utils \
+    && dnf clean all
+
+# Install MicroShift binary
+COPY bin/microshift /usr/bin/microshift
+
+# Install systemd unit files
+COPY packaging/systemd/*.service /usr/lib/systemd/system/
+
+# Install default configuration
+RUN mkdir -p /etc/microshift
+COPY packaging/config/config.yaml /etc/microshift/config.yaml
+
+# Install embedded assets
+RUN mkdir -p /usr/share/microshift/assets
+COPY assets/ /usr/share/microshift/assets/
+
+# Create data directory
+RUN mkdir -p /var/lib/microshift
+
+# Enable services so they start on boot
+RUN systemctl enable cri-o.service && \
+    systemctl enable microshift.service

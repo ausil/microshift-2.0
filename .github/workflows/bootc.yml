@@ -1,0 +1,50 @@
+name: Bootc Image
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  bootc:
+    name: Build bootc image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build microshift binary
+        run: make build
+
+      - name: Build bootc container image
+        run: |
+          podman build \
+            -t microshift-bootc:test \
+            -f images/bootc/Containerfile \
+            .
+
+      - name: Verify image contents
+        run: |
+          podman run --rm microshift-bootc:test test -x /usr/bin/microshift
+          podman run --rm microshift-bootc:test test -f /usr/lib/systemd/system/microshift.service
+          podman run --rm microshift-bootc:test test -f /usr/lib/systemd/system/microshift-etcd.service
+          podman run --rm microshift-bootc:test test -f /usr/lib/systemd/system/microshift-apiserver.service
+          podman run --rm microshift-bootc:test test -f /etc/microshift/config.yaml
+          podman run --rm microshift-bootc:test test -d /usr/share/microshift/assets
+          echo "All expected files present in image"
+
+      - name: Verify microshift binary in image
+        run: |
+          podman run --rm microshift-bootc:test /usr/bin/microshift version
+
+      - name: Show image size
+        run: |
+          fmt='Image size: {{.Size}}'
+          podman images microshift-bootc:test --format "$fmt"
