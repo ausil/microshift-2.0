@@ -27,3 +27,26 @@
 
 # Memory limit for etcd in MB (0 = no limit)
 # etcdMemoryLimit: 0
+
+# Storage configuration
+# storage:
+#   # Storage driver: local-path (default), lvms, nfs, or none
+#   driver: "local-path"
+#
+#   # local-path-provisioner settings (used when driver: local-path)
+#   localPath:
+#     storagePath: "/var/lib/microshift/storage"
+#
+#   # TopoLVM/LVMS settings (used when driver: lvms)
+#   lvms:
+#     # LVM volume group name (required for lvms)
+#     volumeGroup: ""
+#     # Block device to auto-create VG from (optional — if empty, VG must pre-exist)
+#     device: ""
+#
+#   # NFS provisioner settings (used when driver: nfs)
+#   nfs:
+#     # NFS server hostname or IP (required for nfs)
+#     server: ""
+#     # NFS export path (required for nfs)
+#     path: ""

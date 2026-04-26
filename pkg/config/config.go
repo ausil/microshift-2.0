@@ -12,16 +12,42 @@ import (
 
 // Config holds the MicroShift configuration.
 type Config struct {
-	ClusterName     string `yaml:"clusterName"`
-	BaseDomain      string `yaml:"baseDomain"`
-	NodeIP          string `yaml:"nodeIP"`
-	ServiceCIDR     string `yaml:"serviceCIDR"`
-	ClusterCIDR     string `yaml:"clusterCIDR"`
-	DNSAddress      string `yaml:"dnsAddress"`
-	DataDir         string `yaml:"dataDir"`
-	LogLevel        string `yaml:"logLevel"`
-	CNI             string `yaml:"cni"`
-	EtcdMemoryLimit int    `yaml:"etcdMemoryLimit"`
+	ClusterName     string        `yaml:"clusterName"`
+	BaseDomain      string        `yaml:"baseDomain"`
+	NodeIP          string        `yaml:"nodeIP"`
+	ServiceCIDR     string        `yaml:"serviceCIDR"`
+	ClusterCIDR     string        `yaml:"clusterCIDR"`
+	DNSAddress      string        `yaml:"dnsAddress"`
+	DataDir         string        `yaml:"dataDir"`
+	LogLevel        string        `yaml:"logLevel"`
+	CNI             string        `yaml:"cni"`
+	EtcdMemoryLimit int           `yaml:"etcdMemoryLimit"`
+	Storage         StorageConfig `yaml:"storage"`
+}
+
+// StorageConfig configures the persistent storage driver.
+type StorageConfig struct {
+	Driver    string          `yaml:"driver"`
+	LocalPath LocalPathConfig `yaml:"localPath"`
+	LVMS      LVMSConfig      `yaml:"lvms"`
+	NFS       NFSConfig       `yaml:"nfs"`
+}
+
+// LocalPathConfig configures the local-path-provisioner.
+type LocalPathConfig struct {
+	StoragePath string `yaml:"storagePath"`
+}
+
+// LVMSConfig configures TopoLVM/LVMS storage.
+type LVMSConfig struct {
+	VolumeGroup string `yaml:"volumeGroup"`
+	Device      string `yaml:"device"`
+}
+
+// NFSConfig configures the NFS subdir provisioner.
+type NFSConfig struct {
+	Server string `yaml:"server"`
+	Path   string `yaml:"path"`
 }
 
 // NewDefaultConfig returns a Config with all default values populated.
@@ -35,6 +61,12 @@ func NewDefaultConfig() *Config {
 		LogLevel:        "info",
 		CNI:             "kindnet",
 		EtcdMemoryLimit: 0,
+		Storage: StorageConfig{
+			Driver: "local-path",
+			LocalPath: LocalPathConfig{
+				StoragePath: "/var/lib/microshift/storage",
+			},
+		},
 	}
 	c.DNSAddress = c.DNSServiceIP()
 	return c
@@ -98,6 +130,36 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("etcdMemoryLimit must be >= 0")
 	}
 
+	if err := c.Storage.Validate(); err != nil {
+		return fmt.Errorf("storage: %w", err)
+	}
+
+	return nil
+}
+
+// Validate checks the storage configuration.
+func (s *StorageConfig) Validate() error {
+	switch s.Driver {
+	case "local-path":
+		if s.LocalPath.StoragePath == "" {
+			return fmt.Errorf("localPath.storagePath must not be empty")
+		}
+	case "lvms":
+		if s.LVMS.VolumeGroup == "" {
+			return fmt.Errorf("lvms.volumeGroup is required when driver is lvms")
+		}
+	case "nfs":
+		if s.NFS.Server == "" {
+			return fmt.Errorf("nfs.server is required when driver is nfs")
+		}
+		if s.NFS.Path == "" {
+			return fmt.Errorf("nfs.path is required when driver is nfs")
+		}
+	case "none":
+		// no storage provisioner
+	default:
+		return fmt.Errorf("invalid storage driver %q: must be local-path, lvms, nfs, or none", s.Driver)
+	}
 	return nil
 }
 

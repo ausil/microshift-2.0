@@ -16,6 +16,8 @@ Requires:       kubernetes1.32
 Requires:       etcd
 Requires:       cri-o
 Requires:       containernetworking-plugins
+Recommends:     lvm2
+Suggests:       nfs-utils
 
 %description
 MicroShift 2.0 is a lightweight, single-node Kubernetes distribution
