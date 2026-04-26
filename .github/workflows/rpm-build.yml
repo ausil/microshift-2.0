@@ -17,21 +17,18 @@ jobs:
       image: registry.fedoraproject.org/fedora:latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Install build tools
-        run: dnf install -y rpm-build rpmdevtools golang make git-core
+        run: dnf install -y rpm-build rpmdevtools golang make
 
       - name: Set up rpmbuild tree
         run: rpmdev-setuptree
 
       - name: Create source tarball
         run: |
-          git config --global --add safe.directory '*'
           version=$(grep '^Version:' packaging/rpm/microshift.spec | awk '{print $2}')
-          git archive --prefix=microshift-${version}/ HEAD \
-            -o ~/rpmbuild/SOURCES/microshift-${version}.tar.gz
+          tar czf ~/rpmbuild/SOURCES/microshift-${version}.tar.gz \
+            --transform "s,^\.,microshift-${version}," .
 
       - name: Build SRPM
         run: |
