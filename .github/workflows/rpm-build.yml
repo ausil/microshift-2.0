@@ -28,7 +28,7 @@ jobs:
 
       - name: Create source tarball
         run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory '*'
           version=$(grep '^Version:' packaging/rpm/microshift.spec | awk '{print $2}')
           git archive --prefix=microshift-${version}/ HEAD \
             -o ~/rpmbuild/SOURCES/microshift-${version}.tar.gz
