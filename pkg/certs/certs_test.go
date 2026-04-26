@@ -326,3 +326,123 @@ func TestGenerateAllCerts(t *testing.T) {
 		t.Errorf("admin CN = %q", ac.Subject.CommonName)
 	}
 }
+
+func TestWriteAllCerts(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	cfg.NodeIP = "192.168.1.100"
+	cfg.DataDir = t.TempDir()
+
+	cc, err := GenerateAllCerts(cfg)
+	if err != nil {
+		t.Fatalf("GenerateAllCerts: %v", err)
+	}
+
+	if err := WriteAllCerts(cfg, cc); err != nil {
+		t.Fatalf("WriteAllCerts: %v", err)
+	}
+
+	certDir := cfg.CertDir()
+
+	expectedCerts := []string{
+		"ca.crt", "ca.key",
+		"apiserver.crt", "apiserver.key",
+		"apiserver-kubelet-client.crt", "apiserver-kubelet-client.key",
+		"controller-manager.crt", "controller-manager.key",
+		"scheduler.crt", "scheduler.key",
+		"admin.crt", "admin.key",
+		"front-proxy-ca.crt", "front-proxy-ca.key",
+		"front-proxy-client.crt", "front-proxy-client.key",
+		"sa.pub", "sa.key",
+	}
+
+	for _, f := range expectedCerts {
+		path := filepath.Join(certDir, f)
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Errorf("expected file %s: %v", f, err)
+			continue
+		}
+		if info.Size() == 0 {
+			t.Errorf("file %s is empty", f)
+		}
+	}
+
+	// Verify key file permissions are 0600.
+	keyFiles := []string{
+		"ca.key", "apiserver.key", "apiserver-kubelet-client.key",
+		"controller-manager.key", "scheduler.key", "admin.key",
+		"front-proxy-ca.key", "front-proxy-client.key", "sa.key",
+	}
+	for _, f := range keyFiles {
+		info, err := os.Stat(filepath.Join(certDir, f))
+		if err != nil {
+			continue
+		}
+		if perm := info.Mode().Perm(); perm != 0600 {
+			t.Errorf("%s: expected mode 0600, got %o", f, perm)
+		}
+	}
+
+	// Verify cert file permissions are 0644.
+	certFiles := []string{"ca.crt", "apiserver.crt", "front-proxy-ca.crt"}
+	for _, f := range certFiles {
+		info, err := os.Stat(filepath.Join(certDir, f))
+		if err != nil {
+			continue
+		}
+		if perm := info.Mode().Perm(); perm != 0644 {
+			t.Errorf("%s: expected mode 0644, got %o", f, perm)
+		}
+	}
+
+	// Verify sa.pub is 0644.
+	info, err := os.Stat(filepath.Join(certDir, "sa.pub"))
+	if err != nil {
+		t.Fatalf("stat sa.pub: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0644 {
+		t.Errorf("sa.pub: expected mode 0644, got %o", perm)
+	}
+
+	// Verify cert content is valid PEM.
+	caCertData, err := os.ReadFile(filepath.Join(certDir, "ca.crt"))
+	if err != nil {
+		t.Fatalf("reading ca.crt: %v", err)
+	}
+	block, _ := pem.Decode(caCertData)
+	if block == nil {
+		t.Error("ca.crt is not valid PEM")
+	}
+}
+
+func TestNewSignedCertExpiry(t *testing.T) {
+	ca, err := NewSelfSignedCA("test-ca", 24*time.Hour)
+	if err != nil {
+		t.Fatalf("NewSelfSignedCA: %v", err)
+	}
+
+	cert, err := NewSignedCert(ca, "test", nil, nil, nil, 1*time.Hour, false)
+	if err != nil {
+		t.Fatalf("NewSignedCert: %v", err)
+	}
+
+	// Cert should expire within ~1 hour.
+	remaining := time.Until(cert.Cert.NotAfter)
+	if remaining > 2*time.Hour || remaining < 30*time.Minute {
+		t.Errorf("unexpected cert expiry: %v remaining", remaining)
+	}
+}
+
+func TestCAIsSelfSigned(t *testing.T) {
+	ca, err := NewSelfSignedCA("self-signed", 24*time.Hour)
+	if err != nil {
+		t.Fatalf("NewSelfSignedCA: %v", err)
+	}
+
+	if ca.Cert.Issuer.CommonName != ca.Cert.Subject.CommonName {
+		t.Error("CA should be self-signed (issuer == subject)")
+	}
+	if !ca.Cert.BasicConstraintsValid {
+		t.Error("CA should have BasicConstraintsValid set")
+	}
+}

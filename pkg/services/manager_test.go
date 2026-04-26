@@ -168,6 +168,80 @@ func TestGenerateSchedulerConfig(t *testing.T) {
 
 // ---------- kubelet ----------
 
+func TestGenerateEtcdConfigPaths(t *testing.T) {
+	cfg := setupTestConfig(t)
+
+	if err := GenerateEtcdConfig(cfg); err != nil {
+		t.Fatalf("GenerateEtcdConfig: %v", err)
+	}
+
+	// Verify the etcd data dir path is included.
+	etcdYAML := filepath.Join(cfg.ComponentConfigDir(), "etcd.yaml")
+	fileContains(t, etcdYAML, cfg.EtcdDataDir())
+
+	// Verify cert paths reference the config's cert dir.
+	etcdEnv := filepath.Join(cfg.ComponentConfigDir(), "etcd.env")
+	fileContains(t, etcdEnv, cfg.CertDir())
+}
+
+func TestGenerateAPIServerConfigCustomCIDR(t *testing.T) {
+	cfg := setupTestConfig(t)
+	cfg.ServiceCIDR = "10.200.0.0/16"
+
+	if err := GenerateAPIServerConfig(cfg); err != nil {
+		t.Fatalf("GenerateAPIServerConfig: %v", err)
+	}
+
+	envPath := filepath.Join(cfg.ComponentConfigDir(), "apiserver.env")
+	fileContains(t, envPath, "--service-cluster-ip-range=10.200.0.0/16")
+}
+
+func TestGenerateControllerManagerConfigCustomCIDR(t *testing.T) {
+	cfg := setupTestConfig(t)
+	cfg.ClusterCIDR = "10.200.0.0/16"
+	cfg.ServiceCIDR = "10.100.0.0/16"
+
+	if err := GenerateControllerManagerConfig(cfg); err != nil {
+		t.Fatalf("GenerateControllerManagerConfig: %v", err)
+	}
+
+	envPath := filepath.Join(cfg.ComponentConfigDir(), "controller-manager.env")
+	fileContains(t, envPath,
+		"--cluster-cidr=10.200.0.0/16",
+		"--service-cluster-ip-range=10.100.0.0/16",
+	)
+}
+
+func TestGenerateKubeletConfigCustomNodeIP(t *testing.T) {
+	cfg := setupTestConfig(t)
+	cfg.NodeIP = "10.0.0.5"
+
+	if err := GenerateKubeletConfig(cfg); err != nil {
+		t.Fatalf("GenerateKubeletConfig: %v", err)
+	}
+
+	envPath := filepath.Join(cfg.ComponentConfigDir(), "kubelet.env")
+	fileContains(t, envPath,
+		"--hostname-override=10.0.0.5",
+		"--node-ip=10.0.0.5",
+	)
+
+	// DNS address should be based on ServiceCIDR.
+	configPath := filepath.Join(cfg.ComponentConfigDir(), "kubelet-config.yaml")
+	fileContains(t, configPath, cfg.DNSServiceIP())
+}
+
+func TestGenerateSchedulerConfigKubeconfig(t *testing.T) {
+	cfg := setupTestConfig(t)
+
+	if err := GenerateSchedulerConfig(cfg); err != nil {
+		t.Fatalf("GenerateSchedulerConfig: %v", err)
+	}
+
+	envPath := filepath.Join(cfg.ComponentConfigDir(), "scheduler.env")
+	fileContains(t, envPath, cfg.KubeconfigDir())
+}
+
 func TestGenerateKubeletConfig(t *testing.T) {
 	cfg := setupTestConfig(t)
 

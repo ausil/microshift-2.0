@@ -213,3 +213,216 @@ func TestDirPaths(t *testing.T) {
 		t.Errorf("EtcdDataDir() = %q", got)
 	}
 }
+
+func TestDefaultStorageConfig(t *testing.T) {
+	cfg := NewDefaultConfig()
+	if cfg.Storage.Driver != "local-path" {
+		t.Errorf("expected default storage driver local-path, got %q", cfg.Storage.Driver)
+	}
+	if cfg.Storage.LocalPath.StoragePath != "/var/lib/microshift/storage" {
+		t.Errorf("expected default storage path, got %q", cfg.Storage.LocalPath.StoragePath)
+	}
+}
+
+func TestValidateStorageLocalPath(t *testing.T) {
+	cfg := NewDefaultConfig()
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("default config should be valid: %v", err)
+	}
+}
+
+func TestValidateStorageLVMS(t *testing.T) {
+	cfg := NewDefaultConfig()
+	cfg.Storage.Driver = "lvms"
+	cfg.Storage.LVMS.VolumeGroup = "microshift-vg"
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("lvms config with VG should be valid: %v", err)
+	}
+}
+
+func TestValidateStorageLVMSMissingVG(t *testing.T) {
+	cfg := NewDefaultConfig()
+	cfg.Storage.Driver = "lvms"
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for lvms without volumeGroup")
+	}
+}
+
+func TestValidateStorageNFS(t *testing.T) {
+	cfg := NewDefaultConfig()
+	cfg.Storage.Driver = "nfs"
+	cfg.Storage.NFS.Server = "192.168.1.10"
+	cfg.Storage.NFS.Path = "/exports/microshift"
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("nfs config with server+path should be valid: %v", err)
+	}
+}
+
+func TestValidateStorageNFSMissing(t *testing.T) {
+	cfg := NewDefaultConfig()
+	cfg.Storage.Driver = "nfs"
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for nfs without server")
+	}
+}
+
+func TestValidateStorageNone(t *testing.T) {
+	cfg := NewDefaultConfig()
+	cfg.Storage.Driver = "none"
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("none driver should be valid: %v", err)
+	}
+}
+
+func TestValidateStorageInvalidDriver(t *testing.T) {
+	cfg := NewDefaultConfig()
+	cfg.Storage.Driver = "ceph"
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for invalid storage driver")
+	}
+}
+
+func TestValidateEmptyBaseDomain(t *testing.T) {
+	cfg := NewDefaultConfig()
+	cfg.BaseDomain = ""
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for empty BaseDomain")
+	}
+}
+
+func TestValidateEmptyDataDir(t *testing.T) {
+	cfg := NewDefaultConfig()
+	cfg.DataDir = ""
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for empty DataDir")
+	}
+}
+
+func TestValidateNegativeEtcdMemoryLimit(t *testing.T) {
+	cfg := NewDefaultConfig()
+	cfg.EtcdMemoryLimit = -1
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for negative EtcdMemoryLimit")
+	}
+}
+
+func TestValidateValidLogLevels(t *testing.T) {
+	cfg := NewDefaultConfig()
+	// Default config should pass validation with default log level.
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("default config should be valid: %v", err)
+	}
+}
+
+func TestLoadConfigWithStorage(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	yamlContent := `
+clusterName: "storage-test"
+nodeIP: "10.0.0.1"
+storage:
+  driver: "lvms"
+  lvms:
+    volumeGroup: "test-vg"
+    device: "/dev/sdb"
+`
+	if err := os.WriteFile(cfgPath, []byte(yamlContent), 0644); err != nil {
+		t.Fatalf("writing test config: %v", err)
+	}
+
+	cfg, err := LoadConfig(cfgPath)
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+
+	if cfg.Storage.Driver != "lvms" {
+		t.Errorf("expected driver=lvms, got %q", cfg.Storage.Driver)
+	}
+	if cfg.Storage.LVMS.VolumeGroup != "test-vg" {
+		t.Errorf("expected volumeGroup=test-vg, got %q", cfg.Storage.LVMS.VolumeGroup)
+	}
+	if cfg.Storage.LVMS.Device != "/dev/sdb" {
+		t.Errorf("expected device=/dev/sdb, got %q", cfg.Storage.LVMS.Device)
+	}
+}
+
+func TestLoadConfigInvalidYAML(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	if err := os.WriteFile(cfgPath, []byte("{{invalid yaml"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadConfig(cfgPath)
+	if err == nil {
+		t.Error("expected error for invalid YAML")
+	}
+}
+
+func TestLoadConfigEmptyFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	if err := os.WriteFile(cfgPath, []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadConfig(cfgPath)
+	if err != nil {
+		t.Fatalf("LoadConfig with empty file should use defaults: %v", err)
+	}
+
+	// All defaults should be populated.
+	if cfg.ClusterName != "microshift" {
+		t.Errorf("expected default ClusterName, got %q", cfg.ClusterName)
+	}
+	if cfg.Storage.Driver != "local-path" {
+		t.Errorf("expected default storage driver, got %q", cfg.Storage.Driver)
+	}
+}
+
+func TestValidateStorageLocalPathEmptyPath(t *testing.T) {
+	cfg := NewDefaultConfig()
+	cfg.Storage.Driver = "local-path"
+	cfg.Storage.LocalPath.StoragePath = ""
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for empty local-path storagePath")
+	}
+}
+
+func TestValidateStorageNFSMissingPath(t *testing.T) {
+	cfg := NewDefaultConfig()
+	cfg.Storage.Driver = "nfs"
+	cfg.Storage.NFS.Server = "192.168.1.10"
+	cfg.Storage.NFS.Path = ""
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for nfs with server but no path")
+	}
+}
+
+func TestDNSServiceIPInvalidCIDR(t *testing.T) {
+	cfg := &Config{ServiceCIDR: "not-a-cidr"}
+	got := cfg.DNSServiceIP()
+	if got != "" {
+		t.Errorf("expected empty string for invalid CIDR, got %q", got)
+	}
+}
+
+func TestDirPathsCustomDataDir(t *testing.T) {
+	cfg := &Config{DataDir: "/opt/microshift"}
+
+	if got := cfg.CertDir(); got != "/opt/microshift/certs" {
+		t.Errorf("CertDir() = %q", got)
+	}
+	if got := cfg.KubeconfigDir(); got != "/opt/microshift/kubeconfig" {
+		t.Errorf("KubeconfigDir() = %q", got)
+	}
+	if got := cfg.ComponentConfigDir(); got != "/opt/microshift/config" {
+		t.Errorf("ComponentConfigDir() = %q", got)
+	}
+	if got := cfg.EtcdDataDir(); got != "/opt/microshift/etcd" {
+		t.Errorf("EtcdDataDir() = %q", got)
+	}
+}
