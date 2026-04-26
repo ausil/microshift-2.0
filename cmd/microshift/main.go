@@ -33,7 +33,9 @@ func main() {
 func runCmd(args []string) {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	configPath := fs.String("config", "/etc/microshift/config.yaml", "path to configuration file")
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		log.Fatalf("Failed to parse flags: %v", err)
+	}
 
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
@@ -55,7 +57,9 @@ func runCmd(args []string) {
 func showConfigCmd(args []string) {
 	fs := flag.NewFlagSet("show-config", flag.ExitOnError)
 	configPath := fs.String("config", "/etc/microshift/config.yaml", "path to configuration file")
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		log.Fatalf("Failed to parse flags: %v", err)
+	}
 
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {

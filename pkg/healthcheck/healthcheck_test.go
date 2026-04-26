@@ -29,7 +29,7 @@ func TestCheckAPIServerHealthy(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/healthz" {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("ok"))
+			_, _ = w.Write([]byte("ok"))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
