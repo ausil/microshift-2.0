@@ -1,4 +1,4 @@
-FROM registry.fedoraproject.org/fedora-iot-bootc:latest
+FROM quay.io/fedora/fedora-bootc:42
 
 # Install MicroShift dependencies from Fedora repos
 RUN dnf install -y \
