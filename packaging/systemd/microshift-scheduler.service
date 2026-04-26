@@ -1,0 +1,15 @@
+[Unit]
+Description=MicroShift Kubernetes Scheduler
+After=microshift-apiserver.service
+Requires=microshift-apiserver.service
+PartOf=microshift.service
+
+[Service]
+Type=simple
+EnvironmentFile=/var/lib/microshift/config/scheduler.env
+ExecStart=/usr/bin/kube-scheduler $KUBE_SCHEDULER_ARGS
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=microshift.service

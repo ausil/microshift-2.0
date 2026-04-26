@@ -1,0 +1,29 @@
+# MicroShift 2.0 Configuration
+# This file is read from /etc/microshift/config.yaml
+
+# Cluster name
+# clusterName: microshift
+
+# Base domain for the cluster
+# baseDomain: microshift.local
+
+# Node IP address (auto-detected if not set)
+# nodeIP: ""
+
+# Service CIDR for Kubernetes services
+# serviceCIDR: "10.96.0.0/16"
+
+# Cluster CIDR for pod networking
+# clusterCIDR: "10.42.0.0/16"
+
+# Data directory for MicroShift state
+# dataDir: "/var/lib/microshift"
+
+# Log level (debug, info, warn, error)
+# logLevel: "info"
+
+# CNI plugin (kindnet, ovn-kubernetes)
+# cni: "kindnet"
+
+# Memory limit for etcd in MB (0 = no limit)
+# etcdMemoryLimit: 0

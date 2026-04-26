@@ -1,0 +1,17 @@
+[Unit]
+Description=MicroShift etcd
+Documentation=https://github.com/ausil/microshift-2.0
+After=microshift.service
+Requires=microshift.service
+PartOf=microshift.service
+
+[Service]
+Type=notify
+EnvironmentFile=/var/lib/microshift/config/etcd.env
+ExecStart=/usr/bin/etcd
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=microshift.service

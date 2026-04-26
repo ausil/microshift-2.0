@@ -1,0 +1,17 @@
+[Unit]
+Description=MicroShift Kubelet
+After=microshift-apiserver.service cri-o.service
+Requires=microshift-apiserver.service cri-o.service
+PartOf=microshift.service
+
+[Service]
+Type=simple
+EnvironmentFile=/var/lib/microshift/config/kubelet.env
+ExecStart=/usr/bin/kubelet $KUBELET_ARGS
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+LimitNPROC=65536
+
+[Install]
+WantedBy=microshift.service

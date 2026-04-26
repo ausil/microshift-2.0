@@ -1,0 +1,28 @@
+specfile_path: packaging/rpm/microshift.spec
+
+srpm_build_deps:
+  - golang
+  - make
+
+actions:
+  create-archive:
+    - "git archive --prefix=microshift-{VERSION}/ HEAD -o microshift-{VERSION}.tar.gz"
+  get-current-version:
+    - "grep '^Version:' packaging/rpm/microshift.spec | awk '{print $2}'"
+
+jobs:
+  - job: copr_build
+    trigger: pull_request
+    targets:
+      - fedora-latest-stable
+      - fedora-rawhide
+
+  - job: tests
+    trigger: pull_request
+    targets:
+      - fedora-latest-stable
+
+  - job: propose_downstream
+    trigger: release
+    dist_git_branches:
+      - fedora-rawhide

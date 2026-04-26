@@ -1,0 +1,16 @@
+[Unit]
+Description=MicroShift Kubernetes API Server
+After=microshift-etcd.service
+Requires=microshift-etcd.service
+PartOf=microshift.service
+
+[Service]
+Type=simple
+EnvironmentFile=/var/lib/microshift/config/apiserver.env
+ExecStart=/usr/bin/kube-apiserver $KUBE_APISERVER_ARGS
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=microshift.service

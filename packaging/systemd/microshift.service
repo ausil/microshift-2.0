@@ -1,0 +1,20 @@
+[Unit]
+Description=MicroShift - Lightweight Kubernetes for Edge
+Documentation=https://github.com/ausil/microshift-2.0
+After=network-online.target cri-o.service
+Wants=network-online.target
+Requires=cri-o.service
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/microshift run
+Restart=on-failure
+RestartSec=10
+WatchdogSec=300
+NotifyAccess=main
+LimitNOFILE=65536
+LimitNPROC=65536
+LimitCORE=infinity
+
+[Install]
+WantedBy=multi-user.target
