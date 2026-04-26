@@ -2,7 +2,7 @@ PROJECT_NAME := microshift
 MODULE := github.com/ausil/microshift-2.0
 BINARY := bin/$(PROJECT_NAME)
 GO := go
-GOFLAGS :=
+GOFLAGS := -buildvcs=false
 LDFLAGS := -X $(MODULE)/pkg/version.Version=$(VERSION) \
            -X $(MODULE)/pkg/version.GitCommit=$(GIT_COMMIT)
 

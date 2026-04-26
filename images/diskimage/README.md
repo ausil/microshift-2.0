@@ -52,7 +52,7 @@ sudo virt-install \
     --memory 4096 --vcpus 2 \
     --import \
     --disk path=_output/images/qcow2/disk.qcow2,format=qcow2 \
-    --os-variant fedora42 \
+    --os-variant fedora44 \
     --network network=default \
     --noautoconsole
 ```
