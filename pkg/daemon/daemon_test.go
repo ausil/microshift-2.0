@@ -12,14 +12,14 @@ import (
 )
 
 type fakeSystemdManager struct {
-	started     []string
-	stopped     []string
-	waited      []string
-	reloaded    bool
-	startErr    map[string]error
-	stopErr     map[string]error
-	waitErr     map[string]error
-	reloadErr   error
+	started   []string
+	stopped   []string
+	waited    []string
+	reloaded  bool
+	startErr  map[string]error
+	stopErr   map[string]error
+	waitErr   map[string]error
+	reloadErr error
 }
 
 func newFakeManager() *fakeSystemdManager {
