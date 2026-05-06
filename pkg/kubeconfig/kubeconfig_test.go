@@ -99,6 +99,46 @@ func TestGenerateKubeconfig(t *testing.T) {
 	}
 }
 
+func TestGenerateKubeconfigCustomServer(t *testing.T) {
+	data, err := GenerateKubeconfig("edge", "https://10.0.0.1:8443", []byte("ca"), []byte("cert"), []byte("key"))
+	if err != nil {
+		t.Fatalf("GenerateKubeconfig failed: %v", err)
+	}
+
+	var kc KubeconfigData
+	if err := yaml.Unmarshal(data, &kc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if kc.Clusters[0].Cluster.Server != "https://10.0.0.1:8443" {
+		t.Errorf("expected server=https://10.0.0.1:8443, got %q", kc.Clusters[0].Cluster.Server)
+	}
+}
+
+func TestGenerateKubeconfigContextUserNaming(t *testing.T) {
+	tests := []struct {
+		cluster      string
+		expectedUser string
+	}{
+		{"foo", "foo-user"},
+		{"my-cluster", "my-cluster-user"},
+		{"", "-user"},
+	}
+	for _, tt := range tests {
+		data, err := GenerateKubeconfig(tt.cluster, "https://127.0.0.1:6443", []byte("ca"), []byte("cert"), []byte("key"))
+		if err != nil {
+			t.Fatalf("GenerateKubeconfig(%q): %v", tt.cluster, err)
+		}
+		var kc KubeconfigData
+		if err := yaml.Unmarshal(data, &kc); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if kc.Users[0].Name != tt.expectedUser {
+			t.Errorf("cluster=%q: expected user=%q, got %q", tt.cluster, tt.expectedUser, kc.Users[0].Name)
+		}
+	}
+}
+
 func TestGenerateKubeconfigYAMLValidity(t *testing.T) {
 	data, err := GenerateKubeconfig("cluster", "https://1.2.3.4:6443", []byte("ca"), []byte("cert"), []byte("key"))
 	if err != nil {
@@ -171,5 +211,74 @@ func TestGenerateAllKubeconfigs(t *testing.T) {
 		if perm := info.Mode().Perm(); perm != 0600 {
 			t.Errorf("%s: expected mode 0600, got %o", name, perm)
 		}
+	}
+}
+
+func TestGenerateAllKubeconfigsFileCount(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	cfg.NodeIP = "192.168.1.100"
+	cfg.DataDir = t.TempDir()
+
+	cc, err := certs.GenerateAllCerts(cfg)
+	if err != nil {
+		t.Fatalf("GenerateAllCerts: %v", err)
+	}
+
+	if err := GenerateAllKubeconfigs(cfg, cc); err != nil {
+		t.Fatalf("GenerateAllKubeconfigs: %v", err)
+	}
+
+	entries, err := os.ReadDir(cfg.KubeconfigDir())
+	if err != nil {
+		t.Fatalf("reading kubeconfig dir: %v", err)
+	}
+
+	if len(entries) != 4 {
+		names := make([]string, len(entries))
+		for i, e := range entries {
+			names[i] = e.Name()
+		}
+		t.Errorf("expected 4 kubeconfig files, got %d: %v", len(entries), names)
+	}
+}
+
+func TestGenerateAllKubeconfigsEachFileContent(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	cfg.NodeIP = "192.168.1.100"
+	cfg.DataDir = t.TempDir()
+
+	cc, err := certs.GenerateAllCerts(cfg)
+	if err != nil {
+		t.Fatalf("GenerateAllCerts: %v", err)
+	}
+
+	if err := GenerateAllKubeconfigs(cfg, cc); err != nil {
+		t.Fatalf("GenerateAllKubeconfigs: %v", err)
+	}
+
+	files := []string{"admin", "controller-manager", "scheduler", "kubelet"}
+	for _, name := range files {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(cfg.KubeconfigDir(), name+".kubeconfig")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("reading %s: %v", name, err)
+			}
+
+			var kc KubeconfigData
+			if err := yaml.Unmarshal(data, &kc); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+
+			if kc.CurrentContext != cfg.ClusterName {
+				t.Errorf("current-context: expected %q, got %q", cfg.ClusterName, kc.CurrentContext)
+			}
+			if kc.Clusters[0].Cluster.Server != "https://127.0.0.1:6443" {
+				t.Errorf("server: expected https://127.0.0.1:6443, got %q", kc.Clusters[0].Cluster.Server)
+			}
+			if kc.Contexts[0].Context.User != cfg.ClusterName+"-user" {
+				t.Errorf("user: expected %s-user, got %q", cfg.ClusterName, kc.Contexts[0].Context.User)
+			}
+		})
 	}
 }

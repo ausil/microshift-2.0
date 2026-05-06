@@ -1,9 +1,13 @@
 package bootstrap
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ausil/microshift-2.0/pkg/config"
 )
@@ -47,7 +51,6 @@ func TestAssetsDirEnvVar(t *testing.T) {
 func TestAssetsDirFallback(t *testing.T) {
 	t.Setenv("MICROSHIFT_ASSETS_DIR", "")
 	dir := AssetsDir()
-	// Should fall back to ./assets or /usr/share/microshift/assets
 	if dir != "./assets" && dir != "/usr/share/microshift/assets" {
 		t.Errorf("unexpected assets dir: %s", dir)
 	}
@@ -136,7 +139,6 @@ func TestApplyManifestsWithAssets(t *testing.T) {
 
 	assetsDir := t.TempDir()
 
-	// Create a minimal RBAC manifest with no template vars.
 	rbacDir := assetsDir + "/rbac"
 	if err := os.MkdirAll(rbacDir, 0755); err != nil {
 		t.Fatal(err)
@@ -150,7 +152,6 @@ metadata:
 		t.Fatal(err)
 	}
 
-	// Create a storage/local-path manifest with template vars.
 	storageDir := assetsDir + "/storage/local-path"
 	if err := os.MkdirAll(storageDir, 0755); err != nil {
 		t.Fatal(err)
@@ -167,19 +168,14 @@ data:
 		t.Fatal(err)
 	}
 
-	// Create a non-YAML file that should be skipped.
 	if err := os.WriteFile(rbacDir+"/README.md", []byte("skip me"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	// applyManifests will call kubectlApply which will fail because there's
-	// no API server, but we can verify the template rendering worked by
-	// checking the error message doesn't mention template errors.
 	err := applyManifests("/tmp/nonexistent.kubeconfig", cfg, assetsDir)
 	if err == nil {
 		t.Fatal("expected error (no kubectl/API server), got nil")
 	}
-	// The error should be about kubectl failing, not template parsing.
 	if strings.Contains(err.Error(), "template") {
 		t.Errorf("unexpected template error: %v", err)
 	}
@@ -189,9 +185,7 @@ func TestApplyManifestsNonexistentDir(t *testing.T) {
 	cfg := config.NewDefaultConfig()
 	cfg.NodeIP = "192.168.1.100"
 
-	// Create an assets dir with only the required dirs missing.
 	assetsDir := t.TempDir()
-	// No rbac, kindnet, or coredns dirs — should skip them gracefully.
 	err := applyManifests("/tmp/nonexistent.kubeconfig", cfg, assetsDir)
 	if err != nil {
 		t.Errorf("expected nil for nonexistent manifest dirs, got: %v", err)
@@ -204,7 +198,6 @@ func TestApplyManifestsStorageNone(t *testing.T) {
 	cfg.NodeIP = "192.168.1.100"
 
 	assetsDir := t.TempDir()
-	// With driver "none", no storage dir should be appended.
 	err := applyManifests("/tmp/nonexistent.kubeconfig", cfg, assetsDir)
 	if err != nil {
 		t.Errorf("expected nil for driver=none with no manifest dirs, got: %v", err)
@@ -239,7 +232,135 @@ func TestTemplateManifestAllVars(t *testing.T) {
 	}
 }
 
+// --- New tests ---
+
+func TestWaitForAPIServerSuccess(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	if err := waitForAPIServer(srv.URL, 5*time.Second); err != nil {
+		t.Errorf("expected success, got error: %v", err)
+	}
+}
+
+func TestWaitForAPIServerTimeout(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	err := waitForAPIServer(srv.URL, 3*time.Second)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !strings.Contains(err.Error(), "did not become healthy") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestKubectlApplyArgs(t *testing.T) {
+	var capturedArgs []string
+	origExecCommand := execCommand
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		capturedArgs = append([]string{name}, args...)
+		return exec.Command("true")
+	}
+	t.Cleanup(func() { execCommand = origExecCommand })
+
+	manifest := []byte("apiVersion: v1\nkind: ConfigMap\n")
+	if err := kubectlApply("/tmp/test.kubeconfig", manifest); err != nil {
+		t.Fatalf("kubectlApply: %v", err)
+	}
+
+	if len(capturedArgs) < 5 {
+		t.Fatalf("expected at least 5 args, got %v", capturedArgs)
+	}
+	if capturedArgs[0] != "kubectl" {
+		t.Errorf("expected kubectl, got %s", capturedArgs[0])
+	}
+	if capturedArgs[1] != "apply" {
+		t.Errorf("expected apply, got %s", capturedArgs[1])
+	}
+	if capturedArgs[3] != "/tmp/test.kubeconfig" {
+		t.Errorf("expected kubeconfig path, got %s", capturedArgs[3])
+	}
+}
+
+func TestEnsureLVMVolumeGroupExists(t *testing.T) {
+	origExecCommand := execCommand
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		if name == "vgs" {
+			return exec.Command("true")
+		}
+		return exec.Command("false")
+	}
+	t.Cleanup(func() { execCommand = origExecCommand })
+
+	cfg := config.NewDefaultConfig()
+	cfg.Storage.Driver = "lvms"
+	cfg.Storage.LVMS.VolumeGroup = "test-vg"
+
+	if err := ensureLVMVolumeGroup(cfg); err != nil {
+		t.Errorf("expected nil when VG exists, got: %v", err)
+	}
+}
+
+func TestEnsureLVMVolumeGroupCreateNew(t *testing.T) {
+	var cmds []string
+	origExecCommand := execCommand
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		cmds = append(cmds, name)
+		if name == "vgs" {
+			return exec.Command("false")
+		}
+		return exec.Command("true")
+	}
+	t.Cleanup(func() { execCommand = origExecCommand })
+
+	cfg := config.NewDefaultConfig()
+	cfg.Storage.Driver = "lvms"
+	cfg.Storage.LVMS.VolumeGroup = "new-vg"
+	cfg.Storage.LVMS.Device = "/dev/sdb"
+
+	if err := ensureLVMVolumeGroup(cfg); err != nil {
+		t.Errorf("expected success, got: %v", err)
+	}
+
+	if len(cmds) != 3 {
+		t.Fatalf("expected 3 commands (vgs, pvcreate, vgcreate), got %v", cmds)
+	}
+	if cmds[0] != "vgs" || cmds[1] != "pvcreate" || cmds[2] != "vgcreate" {
+		t.Errorf("unexpected command sequence: %v", cmds)
+	}
+}
+
+func TestEnsureLVMVolumeGroupNoDevice(t *testing.T) {
+	origExecCommand := execCommand
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("false")
+	}
+	t.Cleanup(func() { execCommand = origExecCommand })
+
+	cfg := config.NewDefaultConfig()
+	cfg.Storage.Driver = "lvms"
+	cfg.Storage.LVMS.VolumeGroup = "missing-vg"
+	cfg.Storage.LVMS.Device = ""
+
+	err := ensureLVMVolumeGroup(cfg)
+	if err == nil {
+		t.Fatal("expected error when VG missing and no device configured")
+	}
+	if !strings.Contains(err.Error(), "does not exist") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
 func init() {
-	// Ensure MICROSHIFT_ASSETS_DIR doesn't leak between tests
 	os.Unsetenv("MICROSHIFT_ASSETS_DIR")
 }

@@ -1,11 +1,74 @@
 package daemon
 
 import (
+	"fmt"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/ausil/microshift-2.0/internal/testutil"
 	"github.com/ausil/microshift-2.0/pkg/config"
 )
+
+type fakeSystemdManager struct {
+	started     []string
+	stopped     []string
+	waited      []string
+	reloaded    bool
+	startErr    map[string]error
+	stopErr     map[string]error
+	waitErr     map[string]error
+	reloadErr   error
+}
+
+func newFakeManager() *fakeSystemdManager {
+	return &fakeSystemdManager{
+		startErr: make(map[string]error),
+		stopErr:  make(map[string]error),
+		waitErr:  make(map[string]error),
+	}
+}
+
+func (f *fakeSystemdManager) StartService(name string) error {
+	if err, ok := f.startErr[name]; ok {
+		return err
+	}
+	f.started = append(f.started, name)
+	return nil
+}
+
+func (f *fakeSystemdManager) StopService(name string) error {
+	if err, ok := f.stopErr[name]; ok {
+		f.stopped = append(f.stopped, name)
+		return err
+	}
+	f.stopped = append(f.stopped, name)
+	return nil
+}
+
+func (f *fakeSystemdManager) RestartService(name string) error {
+	return nil
+}
+
+func (f *fakeSystemdManager) IsActive(name string) (bool, error) {
+	return true, nil
+}
+
+func (f *fakeSystemdManager) WaitForReady(name string, timeout time.Duration) error {
+	if err, ok := f.waitErr[name]; ok {
+		return err
+	}
+	f.waited = append(f.waited, name)
+	return nil
+}
+
+func (f *fakeSystemdManager) DaemonReload() error {
+	f.reloaded = true
+	return f.reloadErr
+}
+
+func (f *fakeSystemdManager) Close() {}
 
 func TestNew(t *testing.T) {
 	cfg := config.NewDefaultConfig()
@@ -21,8 +84,17 @@ func TestNew(t *testing.T) {
 	}
 }
 
+func TestNewWithManager(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	mgr := newFakeManager()
+	d := NewWithManager(cfg, mgr)
+	if d.svcMgr != mgr {
+		t.Error("svcMgr doesn't match injected manager")
+	}
+}
+
 func TestGenerateComponentConfigs(t *testing.T) {
-	cfg := testConfig(t)
+	cfg := testutil.NewTestConfig(t)
 
 	d := New(cfg)
 	if err := d.generateComponentConfigs(); err != nil {
@@ -67,10 +139,8 @@ func TestStop(t *testing.T) {
 	cfg := config.NewDefaultConfig()
 	d := New(cfg)
 
-	// Stop should close the channel without panic
 	d.Stop()
 
-	// Verify channel is closed
 	select {
 	case _, ok := <-d.stopCh:
 		if ok {
@@ -84,19 +154,16 @@ func TestStop(t *testing.T) {
 func TestStopComponentsNilManager(t *testing.T) {
 	cfg := config.NewDefaultConfig()
 	d := New(cfg)
-	// Should not panic with nil svcMgr
 	d.stopComponents()
 }
 
 func TestSdNotifyNoSocket(t *testing.T) {
 	t.Setenv("NOTIFY_SOCKET", "")
-	// Should return silently without error when no socket is set.
 	sdNotify("READY=1")
 }
 
 func TestSdNotifyInvalidSocket(t *testing.T) {
 	t.Setenv("NOTIFY_SOCKET", "/tmp/nonexistent-microshift-test.sock")
-	// Should not panic even with an invalid socket path.
 	sdNotify("READY=1")
 }
 
@@ -104,24 +171,21 @@ func TestNewInitializesStopCh(t *testing.T) {
 	cfg := config.NewDefaultConfig()
 	d := New(cfg)
 
-	// stopCh should be open (not closed).
 	select {
 	case <-d.stopCh:
 		t.Error("stopCh should not be closed on a new daemon")
 	default:
-		// expected
 	}
 }
 
 func TestGenerateComponentConfigsCreatesAllFiles(t *testing.T) {
-	cfg := testConfig(t)
+	cfg := testutil.NewTestConfig(t)
 	d := New(cfg)
 
 	if err := d.generateComponentConfigs(); err != nil {
 		t.Fatalf("generateComponentConfigs: %v", err)
 	}
 
-	// Verify file contents are non-empty.
 	files := map[string]string{
 		"etcd.yaml":              "name:",
 		"etcd.env":               "ETCD_",
@@ -134,66 +198,176 @@ func TestGenerateComponentConfigsCreatesAllFiles(t *testing.T) {
 
 	for f, expected := range files {
 		path := cfg.ComponentConfigDir() + "/" + f
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Errorf("reading %s: %v", f, err)
-			continue
-		}
-		content := string(data)
-		if len(content) == 0 {
-			t.Errorf("%s is empty", f)
-		}
-		if expected != "" && !contains(content, expected) {
-			t.Errorf("%s: expected to contain %q", f, expected)
-		}
+		testutil.FileContains(t, path, expected)
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstring(s, substr))
-}
-
-func containsSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 func TestComponentServicesOrder(t *testing.T) {
-	// Verify etcd comes first (must start before apiserver).
 	if componentServices[0] != "microshift-etcd.service" {
 		t.Errorf("expected etcd first, got %s", componentServices[0])
 	}
-	// Verify apiserver comes second.
 	if componentServices[1] != "microshift-apiserver.service" {
 		t.Errorf("expected apiserver second, got %s", componentServices[1])
 	}
-	// Verify kubelet is last.
 	last := componentServices[len(componentServices)-1]
 	if last != "microshift-kubelet.service" {
 		t.Errorf("expected kubelet last, got %s", last)
 	}
 }
 
-func testConfig(t *testing.T) *config.Config {
-	t.Helper()
-	dir := t.TempDir()
-	cfg := config.NewDefaultConfig()
-	cfg.DataDir = dir
-	cfg.NodeIP = "192.168.1.100"
+// --- New tests using fakeSystemdManager ---
 
-	for _, sub := range []string{
-		cfg.CertDir(),
-		cfg.KubeconfigDir(),
-		cfg.ComponentConfigDir(),
-		cfg.EtcdDataDir(),
-	} {
-		if err := os.MkdirAll(sub, 0755); err != nil {
-			t.Fatalf("creating %s: %v", sub, err)
+func TestStartComponentsOrder(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	mgr := newFakeManager()
+	d := NewWithManager(cfg, mgr)
+
+	if err := d.startComponents(); err != nil {
+		t.Fatalf("startComponents: %v", err)
+	}
+
+	if !mgr.reloaded {
+		t.Error("DaemonReload was not called")
+	}
+
+	expectedStarts := []string{
+		"microshift-etcd.service",
+		"microshift-apiserver.service",
+		"microshift-controller-manager.service",
+		"microshift-scheduler.service",
+		"microshift-kubelet.service",
+	}
+	if len(mgr.started) != len(expectedStarts) {
+		t.Fatalf("expected %d starts, got %d: %v", len(expectedStarts), len(mgr.started), mgr.started)
+	}
+	for i, svc := range expectedStarts {
+		if mgr.started[i] != svc {
+			t.Errorf("start[%d]: expected %s, got %s", i, svc, mgr.started[i])
 		}
 	}
-	return cfg
+
+	expectedWaits := []string{
+		"microshift-etcd.service",
+		"microshift-apiserver.service",
+	}
+	if len(mgr.waited) != len(expectedWaits) {
+		t.Fatalf("expected %d waits, got %d: %v", len(expectedWaits), len(mgr.waited), mgr.waited)
+	}
+	for i, svc := range expectedWaits {
+		if mgr.waited[i] != svc {
+			t.Errorf("wait[%d]: expected %s, got %s", i, svc, mgr.waited[i])
+		}
+	}
+}
+
+func TestStartComponentsEtcdStartFailure(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	mgr := newFakeManager()
+	mgr.startErr["microshift-etcd.service"] = fmt.Errorf("etcd failed")
+	d := NewWithManager(cfg, mgr)
+
+	err := d.startComponents()
+	if err == nil {
+		t.Fatal("expected error from etcd start failure")
+	}
+	if !strings.Contains(err.Error(), "etcd") {
+		t.Errorf("error should mention etcd: %v", err)
+	}
+	if len(mgr.started) != 0 {
+		t.Errorf("no services should have been recorded as started, got %v", mgr.started)
+	}
+}
+
+func TestStartComponentsAPIServerWaitTimeout(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	mgr := newFakeManager()
+	mgr.waitErr["microshift-apiserver.service"] = fmt.Errorf("timed out")
+	d := NewWithManager(cfg, mgr)
+
+	err := d.startComponents()
+	if err == nil {
+		t.Fatal("expected error from apiserver wait timeout")
+	}
+	if !strings.Contains(err.Error(), "apiserver") {
+		t.Errorf("error should mention apiserver: %v", err)
+	}
+	// etcd and apiserver should have started, but remaining should not
+	if len(mgr.started) != 2 {
+		t.Errorf("expected 2 services started (etcd + apiserver), got %d: %v", len(mgr.started), mgr.started)
+	}
+}
+
+func TestStopComponentsReverseOrder(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	mgr := newFakeManager()
+	d := NewWithManager(cfg, mgr)
+
+	d.stopComponents()
+
+	expectedStops := []string{
+		"microshift-kubelet.service",
+		"microshift-scheduler.service",
+		"microshift-controller-manager.service",
+		"microshift-apiserver.service",
+		"microshift-etcd.service",
+	}
+	if len(mgr.stopped) != len(expectedStops) {
+		t.Fatalf("expected %d stops, got %d: %v", len(expectedStops), len(mgr.stopped), mgr.stopped)
+	}
+	for i, svc := range expectedStops {
+		if mgr.stopped[i] != svc {
+			t.Errorf("stop[%d]: expected %s, got %s", i, svc, mgr.stopped[i])
+		}
+	}
+}
+
+func TestStopComponentsPartialFailure(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	mgr := newFakeManager()
+	mgr.stopErr["microshift-scheduler.service"] = fmt.Errorf("stop failed")
+	d := NewWithManager(cfg, mgr)
+
+	d.stopComponents()
+
+	if len(mgr.stopped) != 5 {
+		t.Errorf("all 5 services should be attempted, got %d: %v", len(mgr.stopped), mgr.stopped)
+	}
+}
+
+func TestStopDoubleStop(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	d := New(cfg)
+
+	d.Stop()
+	d.Stop() // should not panic thanks to sync.Once
+}
+
+func TestGenerateComponentConfigsIdempotent(t *testing.T) {
+	cfg := testutil.NewTestConfig(t)
+	d := New(cfg)
+
+	if err := d.generateComponentConfigs(); err != nil {
+		t.Fatalf("first generateComponentConfigs: %v", err)
+	}
+	if err := d.generateComponentConfigs(); err != nil {
+		t.Fatalf("second generateComponentConfigs: %v", err)
+	}
+
+	testutil.FileContains(t, cfg.ComponentConfigDir()+"/etcd.yaml", "name:")
+	testutil.FileContains(t, cfg.ComponentConfigDir()+"/apiserver.env", "KUBE_APISERVER_ARGS")
+}
+
+func TestStartComponentsRemainingServiceFailure(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	mgr := newFakeManager()
+	mgr.startErr["microshift-scheduler.service"] = fmt.Errorf("scheduler broken")
+	d := NewWithManager(cfg, mgr)
+
+	err := d.startComponents()
+	if err == nil {
+		t.Fatal("expected error from scheduler start failure")
+	}
+	if !strings.Contains(err.Error(), "scheduler") {
+		t.Errorf("error should mention scheduler: %v", err)
+	}
 }

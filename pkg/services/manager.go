@@ -10,6 +10,17 @@ import (
 	"github.com/coreos/go-systemd/v22/dbus"
 )
 
+// SystemdManager is the interface for managing systemd services.
+type SystemdManager interface {
+	StartService(name string) error
+	StopService(name string) error
+	RestartService(name string) error
+	IsActive(name string) (bool, error)
+	WaitForReady(name string, timeout time.Duration) error
+	DaemonReload() error
+	Close()
+}
+
 // ServiceManager manages systemd services via D-Bus.
 type ServiceManager struct {
 	conn *dbus.Conn

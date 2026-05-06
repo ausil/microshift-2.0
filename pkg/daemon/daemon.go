@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -18,10 +19,11 @@ import (
 )
 
 type Daemon struct {
-	cfg    *config.Config
-	svcMgr *services.ServiceManager
-	health *healthcheck.HealthChecker
-	stopCh chan struct{}
+	cfg      *config.Config
+	svcMgr   services.SystemdManager
+	health   *healthcheck.HealthChecker
+	stopCh   chan struct{}
+	stopOnce sync.Once
 }
 
 var componentServices = []string{
@@ -35,6 +37,14 @@ var componentServices = []string{
 func New(cfg *config.Config) *Daemon {
 	return &Daemon{
 		cfg:    cfg,
+		stopCh: make(chan struct{}),
+	}
+}
+
+func NewWithManager(cfg *config.Config, mgr services.SystemdManager) *Daemon {
+	return &Daemon{
+		cfg:    cfg,
+		svcMgr: mgr,
 		stopCh: make(chan struct{}),
 	}
 }
@@ -199,7 +209,9 @@ func (d *Daemon) stopComponents() {
 }
 
 func (d *Daemon) Stop() {
-	close(d.stopCh)
+	d.stopOnce.Do(func() {
+		close(d.stopCh)
+	})
 }
 
 func sdNotify(state string) {

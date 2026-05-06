@@ -1,50 +1,14 @@
 package services
 
 import (
-	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
-	"github.com/ausil/microshift-2.0/pkg/config"
+	"github.com/ausil/microshift-2.0/internal/testutil"
 )
 
-// setupTestConfig creates a temporary directory structure and returns a
-// config.Config whose DataDir points at it.  The caller does not need to
-// clean up — t.TempDir handles that.
-func setupTestConfig(t *testing.T) *config.Config {
-	t.Helper()
-	dir := t.TempDir()
-
-	cfg := config.NewDefaultConfig()
-	cfg.DataDir = dir
-	cfg.NodeIP = "192.168.1.100"
-
-	// Create the subdirectories the generators write into.
-	for _, sub := range []string{cfg.ComponentConfigDir(), cfg.CertDir(), cfg.KubeconfigDir()} {
-		if err := os.MkdirAll(sub, 0755); err != nil {
-			t.Fatalf("creating dir %s: %v", sub, err)
-		}
-	}
-
-	return cfg
-}
-
-// fileContains is a small helper that reads a file and asserts it contains
-// every string in wants.
-func fileContains(t *testing.T, path string, wants ...string) {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("reading %s: %v", path, err)
-	}
-	content := string(data)
-	for _, w := range wants {
-		if !strings.Contains(content, w) {
-			t.Errorf("%s: expected to contain %q, got:\n%s", filepath.Base(path), w, content)
-		}
-	}
-}
+var setupTestConfig = testutil.NewTestConfig
+var fileContains = testutil.FileContains
 
 // ---------- etcd ----------
 

@@ -433,6 +433,174 @@ func TestNewSignedCertExpiry(t *testing.T) {
 	}
 }
 
+func TestNewSignedCertDNSNames(t *testing.T) {
+	ca, err := NewSelfSignedCA("test-ca", 24*time.Hour)
+	if err != nil {
+		t.Fatalf("NewSelfSignedCA: %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		dnsNames []string
+	}{
+		{"no DNS names", nil},
+		{"single", []string{"kubernetes"}},
+		{"multiple", []string{"kubernetes", "kubernetes.default", "kubernetes.default.svc", "localhost"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cert, err := NewSignedCert(ca, "test", nil, tt.dnsNames, nil, 1*time.Hour, true)
+			if err != nil {
+				t.Fatalf("NewSignedCert: %v", err)
+			}
+			if len(cert.Cert.DNSNames) != len(tt.dnsNames) {
+				t.Errorf("expected %d DNS names, got %d", len(tt.dnsNames), len(cert.Cert.DNSNames))
+			}
+			for i, dns := range tt.dnsNames {
+				if cert.Cert.DNSNames[i] != dns {
+					t.Errorf("DNS[%d]: expected %q, got %q", i, dns, cert.Cert.DNSNames[i])
+				}
+			}
+		})
+	}
+}
+
+func TestNewSignedCertIPAddresses(t *testing.T) {
+	ca, err := NewSelfSignedCA("test-ca", 24*time.Hour)
+	if err != nil {
+		t.Fatalf("NewSelfSignedCA: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		ips  []net.IP
+	}{
+		{"no IPs", nil},
+		{"single IPv4", []net.IP{net.ParseIP("127.0.0.1")}},
+		{"IPv4 and IPv6", []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")}},
+		{"multiple IPv4", []net.IP{net.ParseIP("10.0.0.1"), net.ParseIP("10.96.0.1"), net.ParseIP("192.168.1.100")}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cert, err := NewSignedCert(ca, "test", nil, nil, tt.ips, 1*time.Hour, true)
+			if err != nil {
+				t.Fatalf("NewSignedCert: %v", err)
+			}
+			if len(cert.Cert.IPAddresses) != len(tt.ips) {
+				t.Errorf("expected %d IPs, got %d", len(tt.ips), len(cert.Cert.IPAddresses))
+			}
+		})
+	}
+}
+
+func TestGenerateAllCertsAPIServerSANs(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	cfg.NodeIP = "10.0.0.5"
+
+	cc, err := GenerateAllCerts(cfg)
+	if err != nil {
+		t.Fatalf("GenerateAllCerts: %v", err)
+	}
+
+	apiCert := cc.APIServerCert.Cert
+
+	// Should have first IP of ServiceCIDR (10.96.0.1)
+	foundSvcIP := false
+	for _, ip := range apiCert.IPAddresses {
+		if ip.Equal(net.ParseIP("10.96.0.1")) {
+			foundSvcIP = true
+		}
+	}
+	if !foundSvcIP {
+		t.Error("API server cert missing ServiceCIDR first IP (10.96.0.1)")
+	}
+
+	// Should have the NodeIP
+	foundNodeIP := false
+	for _, ip := range apiCert.IPAddresses {
+		if ip.Equal(net.ParseIP("10.0.0.5")) {
+			foundNodeIP = true
+		}
+	}
+	if !foundNodeIP {
+		t.Error("API server cert missing NodeIP (10.0.0.5)")
+	}
+}
+
+func TestCertChainValidation(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	cfg.NodeIP = "192.168.1.100"
+
+	cc, err := GenerateAllCerts(cfg)
+	if err != nil {
+		t.Fatalf("GenerateAllCerts: %v", err)
+	}
+
+	rootPool := x509.NewCertPool()
+	rootPool.AddCert(cc.RootCA.Cert)
+
+	rootCerts := []struct {
+		name     string
+		cert     *Certificate
+		keyUsage x509.ExtKeyUsage
+	}{
+		{"apiserver", cc.APIServerCert, x509.ExtKeyUsageServerAuth},
+		{"apiserver-kubelet-client", cc.APIServerKubeletClientCert, x509.ExtKeyUsageClientAuth},
+		{"controller-manager", cc.ControllerManagerCert, x509.ExtKeyUsageClientAuth},
+		{"scheduler", cc.SchedulerCert, x509.ExtKeyUsageClientAuth},
+		{"admin", cc.AdminCert, x509.ExtKeyUsageClientAuth},
+	}
+
+	for _, tc := range rootCerts {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := x509.VerifyOptions{
+				Roots:     rootPool,
+				KeyUsages: []x509.ExtKeyUsage{tc.keyUsage},
+			}
+			if _, err := tc.cert.Cert.Verify(opts); err != nil {
+				t.Errorf("cert %s failed verification against root CA: %v", tc.name, err)
+			}
+		})
+	}
+
+	// Front proxy cert should verify against front proxy CA
+	fpPool := x509.NewCertPool()
+	fpPool.AddCert(cc.FrontProxyCA.Cert)
+	opts := x509.VerifyOptions{
+		Roots:     fpPool,
+		KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+	if _, err := cc.FrontProxyCert.Cert.Verify(opts); err != nil {
+		t.Errorf("front-proxy-client failed verification against front-proxy CA: %v", err)
+	}
+}
+
+func TestWriteAllCertsCreatesDirectory(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	cfg.NodeIP = "192.168.1.100"
+	cfg.DataDir = t.TempDir()
+	// Don't create the certs dir — WriteAllCerts should create it
+
+	cc, err := GenerateAllCerts(cfg)
+	if err != nil {
+		t.Fatalf("GenerateAllCerts: %v", err)
+	}
+
+	if err := WriteAllCerts(cfg, cc); err != nil {
+		t.Fatalf("WriteAllCerts: %v", err)
+	}
+
+	// Verify cert dir was created and files exist
+	if _, err := os.Stat(cfg.CertDir()); err != nil {
+		t.Errorf("cert dir should exist: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.CertDir(), "ca.crt")); err != nil {
+		t.Errorf("ca.crt should exist: %v", err)
+	}
+}
+
 func TestCAIsSelfSigned(t *testing.T) {
 	ca, err := NewSelfSignedCA("self-signed", 24*time.Hour)
 	if err != nil {

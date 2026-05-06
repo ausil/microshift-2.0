@@ -12,13 +12,23 @@ import (
 type HealthChecker struct {
 	kubeconfigPath string
 	certDir        string
+	apiServerURL   string
+	etcdURL        string
+	cmdRunner      func(name string, args ...string) ([]byte, error)
 }
 
 func NewHealthChecker(kubeconfigPath, certDir string) *HealthChecker {
 	return &HealthChecker{
 		kubeconfigPath: kubeconfigPath,
 		certDir:        certDir,
+		apiServerURL:   "https://127.0.0.1:6443",
+		etcdURL:        "https://127.0.0.1:2379",
+		cmdRunner:      defaultCmdRunner,
 	}
+}
+
+func defaultCmdRunner(name string, args ...string) ([]byte, error) {
+	return exec.Command(name, args...).Output()
 }
 
 func (h *HealthChecker) CheckAPIServer() error {
@@ -29,7 +39,7 @@ func (h *HealthChecker) CheckAPIServer() error {
 		},
 	}
 
-	resp, err := client.Get("https://127.0.0.1:6443/healthz")
+	resp, err := client.Get(h.apiServerURL + "/healthz")
 	if err != nil {
 		return fmt.Errorf("API server health check failed: %w", err)
 	}
@@ -49,7 +59,7 @@ func (h *HealthChecker) CheckEtcd() error {
 		},
 	}
 
-	resp, err := client.Get("https://127.0.0.1:2379/health")
+	resp, err := client.Get(h.etcdURL + "/health")
 	if err != nil {
 		return fmt.Errorf("etcd health check failed: %w", err)
 	}
@@ -62,12 +72,11 @@ func (h *HealthChecker) CheckEtcd() error {
 }
 
 func (h *HealthChecker) CheckNodeReady() error {
-	cmd := exec.Command("kubectl",
+	output, err := h.cmdRunner("kubectl",
 		"--kubeconfig", h.kubeconfigPath,
 		"get", "nodes",
 		"-o", `jsonpath={.items[0].status.conditions[?(@.type=="Ready")].status}`,
 	)
-	output, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("checking node status: %w", err)
 	}

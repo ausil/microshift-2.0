@@ -402,6 +402,108 @@ func TestValidateStorageNFSMissingPath(t *testing.T) {
 	}
 }
 
+func TestValidateTableDriven(t *testing.T) {
+	tests := []struct {
+		name    string
+		modify  func(*Config)
+		wantErr bool
+	}{
+		{"valid default", func(c *Config) {}, false},
+		{"empty clusterName", func(c *Config) { c.ClusterName = "" }, true},
+		{"empty baseDomain", func(c *Config) { c.BaseDomain = "" }, true},
+		{"empty dataDir", func(c *Config) { c.DataDir = "" }, true},
+		{"invalid serviceCIDR", func(c *Config) { c.ServiceCIDR = "bad" }, true},
+		{"invalid clusterCIDR", func(c *Config) { c.ClusterCIDR = "bad" }, true},
+		{"invalid CNI", func(c *Config) { c.CNI = "calico" }, true},
+		{"valid ovn-kubernetes", func(c *Config) { c.CNI = "ovn-kubernetes" }, false},
+		{"negative etcdMemoryLimit", func(c *Config) { c.EtcdMemoryLimit = -1 }, true},
+		{"zero etcdMemoryLimit", func(c *Config) { c.EtcdMemoryLimit = 0 }, false},
+		{"storage driver none", func(c *Config) { c.Storage.Driver = "none" }, false},
+		{"invalid storage driver", func(c *Config) { c.Storage.Driver = "ceph" }, true},
+		{"lvms without VG", func(c *Config) { c.Storage.Driver = "lvms" }, true},
+		{"lvms with VG", func(c *Config) {
+			c.Storage.Driver = "lvms"
+			c.Storage.LVMS.VolumeGroup = "vg0"
+		}, false},
+		{"nfs without server", func(c *Config) { c.Storage.Driver = "nfs" }, true},
+		{"nfs with server+path", func(c *Config) {
+			c.Storage.Driver = "nfs"
+			c.Storage.NFS.Server = "10.0.0.1"
+			c.Storage.NFS.Path = "/data"
+		}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := NewDefaultConfig()
+			tt.modify(cfg)
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr = %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestDNSServiceIPEdgeCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		serviceCIDR string
+		expected    string
+	}{
+		{"empty string", "", ""},
+		{"/32 CIDR", "10.96.0.0/32", "10.96.0.10"},
+		{"192.168 range", "192.168.0.0/24", "192.168.0.10"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{ServiceCIDR: tt.serviceCIDR}
+			got := cfg.DNSServiceIP()
+			if got != tt.expected {
+				t.Errorf("DNSServiceIP() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestLoadConfigPreservesDefaults(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	if err := os.WriteFile(cfgPath, []byte("clusterName: test\nnodeIP: \"10.0.0.1\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadConfig(cfgPath)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+
+	defaults := NewDefaultConfig()
+	if cfg.BaseDomain != defaults.BaseDomain {
+		t.Errorf("BaseDomain: expected %q, got %q", defaults.BaseDomain, cfg.BaseDomain)
+	}
+	if cfg.ServiceCIDR != defaults.ServiceCIDR {
+		t.Errorf("ServiceCIDR: expected %q, got %q", defaults.ServiceCIDR, cfg.ServiceCIDR)
+	}
+	if cfg.ClusterCIDR != defaults.ClusterCIDR {
+		t.Errorf("ClusterCIDR: expected %q, got %q", defaults.ClusterCIDR, cfg.ClusterCIDR)
+	}
+	if cfg.DataDir != defaults.DataDir {
+		t.Errorf("DataDir: expected %q, got %q", defaults.DataDir, cfg.DataDir)
+	}
+	if cfg.LogLevel != defaults.LogLevel {
+		t.Errorf("LogLevel: expected %q, got %q", defaults.LogLevel, cfg.LogLevel)
+	}
+	if cfg.CNI != defaults.CNI {
+		t.Errorf("CNI: expected %q, got %q", defaults.CNI, cfg.CNI)
+	}
+	if cfg.Storage.Driver != defaults.Storage.Driver {
+		t.Errorf("Storage.Driver: expected %q, got %q", defaults.Storage.Driver, cfg.Storage.Driver)
+	}
+}
+
 func TestDNSServiceIPInvalidCIDR(t *testing.T) {
 	cfg := &Config{ServiceCIDR: "not-a-cidr"}
 	got := cfg.DNSServiceIP()

@@ -15,10 +15,12 @@ import (
 	"github.com/ausil/microshift-2.0/pkg/config"
 )
 
+var execCommand = exec.Command
+
 func Bootstrap(cfg *config.Config) error {
 	kubeconfigPath := filepath.Join(cfg.KubeconfigDir(), "admin.kubeconfig")
 
-	if err := waitForAPIServer(kubeconfigPath, 120*time.Second); err != nil {
+	if err := waitForAPIServer("https://127.0.0.1:6443", 120*time.Second); err != nil {
 		return fmt.Errorf("waiting for API server: %w", err)
 	}
 
@@ -42,7 +44,7 @@ func Bootstrap(cfg *config.Config) error {
 	return nil
 }
 
-func waitForAPIServer(kubeconfigPath string, timeout time.Duration) error {
+func waitForAPIServer(apiServerURL string, timeout time.Duration) error {
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 		Transport: &http.Transport{
@@ -52,7 +54,7 @@ func waitForAPIServer(kubeconfigPath string, timeout time.Duration) error {
 
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		resp, err := client.Get("https://127.0.0.1:6443/healthz")
+		resp, err := client.Get(apiServerURL + "/healthz")
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
@@ -153,7 +155,7 @@ func templateManifest(data []byte, cfg *config.Config) ([]byte, error) {
 }
 
 func kubectlApply(kubeconfigPath string, manifest []byte) error {
-	cmd := exec.Command("kubectl", "apply", "--kubeconfig", kubeconfigPath, "-f", "-")
+	cmd := execCommand("kubectl", "apply", "--kubeconfig", kubeconfigPath, "-f", "-")
 	cmd.Stdin = bytes.NewReader(manifest)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -164,7 +166,7 @@ func ensureLVMVolumeGroup(cfg *config.Config) error {
 	vgName := cfg.Storage.LVMS.VolumeGroup
 
 	// Check if VG already exists
-	cmd := exec.Command("vgs", "--noheadings", "-o", "vg_name", vgName)
+	cmd := execCommand("vgs", "--noheadings", "-o", "vg_name", vgName)
 	if err := cmd.Run(); err == nil {
 		return nil // VG already exists
 	}
@@ -176,7 +178,7 @@ func ensureLVMVolumeGroup(cfg *config.Config) error {
 	}
 
 	// Create PV on the device
-	pvcreate := exec.Command("pvcreate", device)
+	pvcreate := execCommand("pvcreate", device)
 	pvcreate.Stdout = os.Stdout
 	pvcreate.Stderr = os.Stderr
 	if err := pvcreate.Run(); err != nil {
@@ -184,7 +186,7 @@ func ensureLVMVolumeGroup(cfg *config.Config) error {
 	}
 
 	// Create the VG
-	vgcreate := exec.Command("vgcreate", vgName, device)
+	vgcreate := execCommand("vgcreate", vgName, device)
 	vgcreate.Stdout = os.Stdout
 	vgcreate.Stderr = os.Stderr
 	if err := vgcreate.Run(); err != nil {
